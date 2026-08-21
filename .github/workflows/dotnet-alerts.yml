@@ -2,8 +2,8 @@ name: Monitor .NET Releases
 
 on:
   schedule:
-    - cron: '0 * * * *' # Runs every hour
-  workflow_dispatch: # Allows manual testing
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   check-releases:
@@ -13,30 +13,20 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          # Fetch official live .NET release index from Microsoft CDN
           METADATA=$(curl -s "https://microsoft.com")
-
-          # Filter out preview versions and grab the first active release block cleanly
-          STABLE_BLOCK=$(echo "$METADATA" | jq -c '[."releases-index"[] | select(."support-phase" != "preview")][0]')
-
-          # Extract data tokens accurately from the targeted block
+          STABLE_BLOCK=$(echo "$METADATA" | jq -c '."releases-index"[] | select(."support-phase" != "preview")' | head -n 1)
           VERSION=$(echo "$STABLE_BLOCK" | jq -r '."latest-release"')
           RELEASE_DATE=$(echo "$STABLE_BLOCK" | jq -r '."latest-release-date"')
           IS_SECURITY=$(echo "$STABLE_BLOCK" | jq -r '."security"')
 
-          # Verify parsing was successful
           if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
             echo "❌ Failed to parse .NET release variables."
             exit 1
           fi
 
-          # Change warning symbols dynamically if it is a security patch
           STATUS_ALERT="📢 *New Official .NET Release Available*"
-          if [ "$IS_SECURITY" = "true" ]; then
-            STATUS_ALERT="⚠️ *CRITICAL SECURITY RELEASE AVAILABLE*"
-          fi
+          [ "$IS_SECURITY" = "true" ] && STATUS_ALERT="⚠️ *CRITICAL SECURITY RELEASE AVAILABLE*"
 
-          # Construct the clean Slack JSON payload
           PAYLOAD=$(cat <<EOF
           {
             "text": "New .NET Release: $VERSION",
@@ -47,25 +37,10 @@ jobs:
                   "type": "mrkdwn",
                   "text": "$STATUS_ALERT\n*Version:* \`$VERSION\`\n*Released On:* $RELEASE_DATE\n*Security Patch:* $IS_SECURITY"
                 }
-              },
-              {
-                "type": "actions",
-                "elements": [
-                  {
-                    "type": "button",
-                    "text": {
-                      "type": "plain_text",
-                      "text": "View Release Notes"
-                    },
-                    "url": "https://microsoft.com"
-                  }
-                ]
               }
             ]
           }
           EOF
           )
 
-          # Push straight to Slack webhook
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
-          echo "✅ Successfully pinged Slack for version $VERSION"
