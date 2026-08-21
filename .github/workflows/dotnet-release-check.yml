@@ -1,0 +1,47 @@
+name: .NET release check
+
+on:
+  schedule:
+    # Daily at 08:00 UTC — catches releases overnight, lands in your UK morning.
+    - cron: "0 8 * * *"
+    # Extra same-day pass on Tuesdays 18:30 UTC — shortly after Patch Tuesday
+    # publishing begins (10:00 Pacific). The daily run is the real safety net.
+    - cron: "30 18 * * 2"
+  workflow_dispatch: {}   # lets you run it on demand from the Actions tab
+
+# Needed so the job can commit the updated state file back to the repo.
+permissions:
+  contents: write
+
+# Never let two runs race on the state commit.
+concurrency:
+  group: dotnet-release-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for new .NET releases
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          # Blank = auto-watch every channel in "active" or "maintenance" support.
+          # Or pin specific channels, e.g. WATCH_CHANNELS: "8.0,9.0,10.0"
+          WATCH_CHANNELS: ""
+          # "true" = only alert on releases that carry CVE fixes.
+          SECURITY_ONLY: "false"
+        run: python3 check_dotnet_releases.py
+
+      - name: Commit updated state
+        run: |
+          if [[ -n "$(git status --porcelain dotnet-release-state.json)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add dotnet-release-state.json
+            git commit -m "chore: update .NET release state [skip ci]"
+            git push
+          else
+            echo "No state change to commit."
+          fi
