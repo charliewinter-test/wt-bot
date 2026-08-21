@@ -1,0 +1,54 @@
+name: Monitor .NET Releases
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Runs every hour
+  workflow_dispatch: # Allows manual testing
+
+jobs:
+  check-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Latest .NET Release
+        id: get_release
+        run: |
+          # Fetch the latest release payload from Microsoft's core repo
+          RELEASE_DATA=$(curl -s https://github.com)
+          TAG_NAME=$(echo "$RELEASE_DATA" | jq -r .tag_name)
+          HTML_URL=$(echo "$RELEASE_DATA" | jq -r .html_url)
+          BODY=$(echo "$RELEASE_DATA" | jq -r .body | head -n 10) # Get first 10 lines
+          
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "url=$HTML_URL" >> $GITHUB_OUTPUT
+          
+      - name: Send to Slack
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "📢 *New .NET Release Detected!*",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "📢 *New .NET Release Available*\n*Version:* `${{ steps.get_release.outputs.tag }}`"
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Release Notes"
+                      },
+                      "url": "${{ steps.get_release.outputs.url }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
