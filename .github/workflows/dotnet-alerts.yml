@@ -9,46 +9,52 @@ jobs:
   check-releases:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch Latest .NET Release
-        id: get_release
-        run: |
-          # Fetch the latest release payload from Microsoft's core repo
-          RELEASE_DATA=$(curl -s https://github.com)
-          TAG_NAME=$(echo "$RELEASE_DATA" | jq -r .tag_name)
-          HTML_URL=$(echo "$RELEASE_DATA" | jq -r .html_url)
-          BODY=$(echo "$RELEASE_DATA" | jq -r .body | head -n 10) # Get first 10 lines
-          
-          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "url=$HTML_URL" >> $GITHUB_OUTPUT
-          
-      - name: Send to Slack
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          payload: |
-            {
-              "text": "📢 *New .NET Release Detected!*",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "📢 *New .NET Release Available*\n*Version:* `${{ steps.get_release.outputs.tag }}`"
-                  }
-                },
-                {
-                  "type": "actions",
-                  "elements": [
-                    {
-                      "type": "button",
-                      "text": {
-                        "type": "plain_text",
-                        "text": "View Release Notes"
-                      },
-                      "url": "${{ steps.get_release.outputs.url }}"
-                    }
-                  ]
-                }
-              ]
-            }
+      - name: Fetch and Send to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          # Fetch the latest stable release from Microsoft's core repo
+          RELEASE_DATA=$(curl -s "https://github.com")
+          
+          # Extract variables cleanly
+          TAG_NAME=$(echo "$RELEASE_DATA" | jq -r .tag_name)
+          HTML_URL=$(echo "$RELEASE_DATA" | jq -r .html_url)
+
+          # Stop the script if data was not fetched properly
+          if [ "$TAG_NAME" = "null" ] || [ -z "$TAG_NAME" ]; then
+            echo "Error: Could not fetch release data."
+            exit 1
+          fi
+
+          # Construct the Slack JSON payload directly
+          PAYLOAD=$(cat <<EOF
+          {
+            "text": "📢 New .NET Release: $TAG_NAME",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "📢 *New .NET Release Available*\n*Version:* \`$TAG_NAME\`"
+                }
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Release Notes"
+                    },
+                    "url": "$HTML_URL"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+          )
+
+          # Send to Slack via curl to bypass third-party action errors
+          curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
