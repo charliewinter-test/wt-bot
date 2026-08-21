@@ -12,21 +12,23 @@ jobs:
       - name: Fetch and Send to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Uses GitHub's built-in token
         run: |
-          # Fetch the latest stable release from Microsoft's core repo
-          RELEASE_DATA=$(curl -s "https://github.com")
+          # Fetch using authentication to prevent rate-limiting errors
+          RELEASE_DATA=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://github.com")
           
-          # Extract variables cleanly
-          TAG_NAME=$(echo "$RELEASE_DATA" | jq -r .tag_name)
-          HTML_URL=$(echo "$RELEASE_DATA" | jq -r .html_url)
+          # Safely parse JSON properties
+          TAG_NAME=$(echo "$RELEASE_DATA" | jq -r '.tag_name // empty')
+          HTML_URL=$(echo "$RELEASE_DATA" | jq -r '.html_url // empty')
 
-          # Stop the script if data was not fetched properly
-          if [ "$TAG_NAME" = "null" ] || [ -z "$TAG_NAME" ]; then
-            echo "Error: Could not fetch release data."
+          # Fallback check if GitHub returns an API error message instead of release payload
+          if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "null" ]; then
+            echo "❌ Failed to parse valid JSON from GitHub API. Response was:"
+            echo "$RELEASE_DATA" | head -n 5
             exit 1
           fi
 
-          # Construct the Slack JSON payload directly
+          # Construct the clean Slack JSON payload
           PAYLOAD=$(cat <<EOF
           {
             "text": "📢 New .NET Release: $TAG_NAME",
@@ -56,5 +58,6 @@ jobs:
           EOF
           )
 
-          # Send to Slack via curl to bypass third-party action errors
+          # Push straight to Slack webhook
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
+          echo "✅ Successfully pushed release $TAG_NAME to Slack."
