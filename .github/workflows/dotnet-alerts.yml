@@ -16,20 +16,21 @@ jobs:
           # Fetch official live .NET release index from Microsoft CDN
           METADATA=$(curl -s "https://microsoft.com")
 
-          # Parse the first active, non-preview major channel (e.g., .NET 10 or .NET 9)
-          LATEST_STABLE_BLOCK=$(echo "$METADATA" | jq -c '[."releases-index"[] | select(."support-phase" != "preview")][0]')
-          
-          # Extract variables safely
-          VERSION=$(echo "$LATEST_STABLE_BLOCK" | jq -r '."latest-release"')
-          RELEASE_DATE=$(echo "$LATEST_STABLE_BLOCK" | jq -r '."latest-release-date"')
-          IS_SECURITY=$(echo "$LATEST_STABLE_BLOCK" | jq -r '."security"')
+          # Filter out preview versions and grab the first active release block cleanly
+          STABLE_BLOCK=$(echo "$METADATA" | jq -c '[."releases-index"[] | select(."support-phase" != "preview")][0]')
 
+          # Extract data tokens accurately from the targeted block
+          VERSION=$(echo "$STABLE_BLOCK" | jq -r '."latest-release"')
+          RELEASE_DATE=$(echo "$STABLE_BLOCK" | jq -r '."latest-release-date"')
+          IS_SECURITY=$(echo "$STABLE_BLOCK" | jq -r '."security"')
+
+          # Verify parsing was successful
           if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
             echo "❌ Failed to parse .NET release variables."
             exit 1
           fi
 
-          # Set a clear visual indicator for security patches
+          # Change warning symbols dynamically if it is a security patch
           STATUS_ALERT="📢 *New Official .NET Release Available*"
           if [ "$IS_SECURITY" = "true" ]; then
             STATUS_ALERT="⚠️ *CRITICAL SECURITY RELEASE AVAILABLE*"
