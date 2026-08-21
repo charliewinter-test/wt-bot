@@ -16,25 +16,35 @@ jobs:
           # Fetch official live .NET release index from Microsoft CDN
           METADATA=$(curl -s "https://microsoft.com")
 
-          # Extract the newest product release version (e.g. 10.0.10)
-          LATEST_VERSION=$(echo "$METADATA" | jq -r '."releases-index"[0]."latest-release"')
-          RELEASE_DATE=$(echo "$METADATA" | jq -r '."releases-index"[0]."latest-release-date"')
+          # Parse the first active, non-preview major channel (e.g., .NET 10 or .NET 9)
+          LATEST_STABLE_BLOCK=$(echo "$METADATA" | jq -c '[."releases-index"[] | select(."support-phase" != "preview")][0]')
+          
+          # Extract variables safely
+          VERSION=$(echo "$LATEST_STABLE_BLOCK" | jq -r '."latest-release"')
+          RELEASE_DATE=$(echo "$LATEST_STABLE_BLOCK" | jq -r '."latest-release-date"')
+          IS_SECURITY=$(echo "$LATEST_STABLE_BLOCK" | jq -r '."security"')
 
-          if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
-            echo "❌ Failed to query Microsoft CDN metadata."
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "❌ Failed to parse .NET release variables."
             exit 1
           fi
 
-          # Construct the Slack JSON payload
+          # Set a clear visual indicator for security patches
+          STATUS_ALERT="📢 *New Official .NET Release Available*"
+          if [ "$IS_SECURITY" = "true" ]; then
+            STATUS_ALERT="⚠️ *CRITICAL SECURITY RELEASE AVAILABLE*"
+          fi
+
+          # Construct the clean Slack JSON payload
           PAYLOAD=$(cat <<EOF
           {
-            "text": "📢 New .NET Version Available: $LATEST_VERSION",
+            "text": "New .NET Release: $VERSION",
             "blocks": [
               {
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "📢 *New Official .NET Release Available*\n*Version:* \`$LATEST_VERSION\`\n*Released On:* $RELEASE_DATE"
+                  "text": "$STATUS_ALERT\n*Version:* \`$VERSION\`\n*Released On:* $RELEASE_DATE\n*Security Patch:* $IS_SECURITY"
                 }
               },
               {
@@ -44,7 +54,7 @@ jobs:
                     "type": "button",
                     "text": {
                       "type": "plain_text",
-                      "text": "View .NET Releases"
+                      "text": "View Release Notes"
                     },
                     "url": "https://microsoft.com"
                   }
@@ -55,6 +65,6 @@ jobs:
           EOF
           )
 
-          # Send to Slack
+          # Push straight to Slack webhook
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
-          echo "✅ Successfully pinged Slack for version $LATEST_VERSION"
+          echo "✅ Successfully pinged Slack for version $VERSION"
