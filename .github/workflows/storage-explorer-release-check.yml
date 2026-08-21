@@ -1,0 +1,43 @@
+name: Storage Explorer release check
+
+on:
+  schedule:
+    # Daily at 08:10 UTC — offset a few minutes from the other two checks.
+    - cron: "10 8 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # commit the state file back
+
+concurrency:
+  group: storage-explorer-release-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check for new Storage Explorer releases
+        env:
+          # Its own webhook, so alerts post from a distinct Slack app.
+          SLACK_WEBHOOK_URL: ${{ secrets.STORAGE_EXPLORER_SLACK_WEBHOOK_URL }}
+          # Built-in token — no setup needed. Lifts the API rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: "microsoft/AzureStorageExplorer"
+          # "true" to also alert on prereleases/betas.
+          INCLUDE_PRERELEASE: "false"
+        run: python3 check_storage_explorer_releases.py
+
+      - name: Commit updated state
+        run: |
+          if [[ -n "$(git status --porcelain storage-explorer-release-state.json)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add storage-explorer-release-state.json
+            git commit -m "chore: update Storage Explorer release state [skip ci]"
+            git push
+          else
+            echo "No state change to commit."
+          fi
