@@ -1,0 +1,45 @@
+name: Copilot app release check
+
+on:
+  schedule:
+    # Daily at 08:05 UTC — lands in your UK morning. (Offset 5 min from the
+    # .NET check so they don't start at the exact same instant.)
+    - cron: "5 8 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # commit the state file back
+
+concurrency:
+  group: copilot-release-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check for new Copilot app releases
+        env:
+          # Its own webhook, so alerts post from the "GitHub Copilot" Slack app.
+          SLACK_WEBHOOK_URL: ${{ secrets.COPILOT_SLACK_WEBHOOK_URL }}
+          # Built-in token — no setup needed. Lifts the API rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Which repo to watch. Default is the standalone Copilot desktop app.
+          REPO: "github/app"
+          # "true" to also alert on prereleases/betas.
+          INCLUDE_PRERELEASE: "false"
+        run: python3 check_copilot_releases.py
+
+      - name: Commit updated state
+        run: |
+          if [[ -n "$(git status --porcelain copilot-release-state.json)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add copilot-release-state.json
+            git commit -m "chore: update Copilot app release state [skip ci]"
+            git push
+          else
+            echo "No state change to commit."
+          fi
