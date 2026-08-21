@@ -9,35 +9,32 @@ jobs:
   check-releases:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch and Send to Slack
+      - name: Fetch Microsoft CDN and Send to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Uses GitHub's built-in token
         run: |
-          # Fetch using authentication to prevent rate-limiting errors
-          RELEASE_DATA=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://github.com")
-          
-          # Safely parse JSON properties
-          TAG_NAME=$(echo "$RELEASE_DATA" | jq -r '.tag_name // empty')
-          HTML_URL=$(echo "$RELEASE_DATA" | jq -r '.html_url // empty')
+          # Fetch official live .NET release index from Microsoft CDN
+          METADATA=$(curl -s "https://microsoft.com")
 
-          # Fallback check if GitHub returns an API error message instead of release payload
-          if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "null" ]; then
-            echo "❌ Failed to parse valid JSON from GitHub API. Response was:"
-            echo "$RELEASE_DATA" | head -n 5
+          # Extract the newest product release version (e.g. 10.0.10)
+          LATEST_VERSION=$(echo "$METADATA" | jq -r '."releases-index"[0]."latest-release"')
+          RELEASE_DATE=$(echo "$METADATA" | jq -r '."releases-index"[0]."latest-release-date"')
+
+          if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
+            echo "❌ Failed to query Microsoft CDN metadata."
             exit 1
           fi
 
-          # Construct the clean Slack JSON payload
+          # Construct the Slack JSON payload
           PAYLOAD=$(cat <<EOF
           {
-            "text": "📢 New .NET Release: $TAG_NAME",
+            "text": "📢 New .NET Version Available: $LATEST_VERSION",
             "blocks": [
               {
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "📢 *New .NET Release Available*\n*Version:* \`$TAG_NAME\`"
+                  "text": "📢 *New Official .NET Release Available*\n*Version:* \`$LATEST_VERSION\`\n*Released On:* $RELEASE_DATE"
                 }
               },
               {
@@ -47,9 +44,9 @@ jobs:
                     "type": "button",
                     "text": {
                       "type": "plain_text",
-                      "text": "View Release Notes"
+                      "text": "View .NET Releases"
                     },
-                    "url": "$HTML_URL"
+                    "url": "https://microsoft.com"
                   }
                 ]
               }
@@ -58,6 +55,6 @@ jobs:
           EOF
           )
 
-          # Push straight to Slack webhook
+          # Send to Slack
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
-          echo "✅ Successfully pushed release $TAG_NAME to Slack."
+          echo "✅ Successfully pinged Slack for version $LATEST_VERSION"
