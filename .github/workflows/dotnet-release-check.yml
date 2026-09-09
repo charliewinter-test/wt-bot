@@ -2,11 +2,8 @@ name: .NET release check
 
 on:
   schedule:
-    # Daily at 08:00 UTC — catches releases overnight, lands in your UK morning.
-    - cron: "0 8 * * *"
-    # Extra same-day pass on Tuesdays 18:30 UTC — shortly after Patch Tuesday
-    # publishing begins (10:00 Pacific). The daily run is the real safety net.
-    - cron: "30 18 * * 2"
+    - cron: "0 8 * * *"    # 09:00 BST / 08:00 GMT daily
+    - cron: "0 20 * * *"   # 21:00 BST / 20:00 GMT daily
   workflow_dispatch: {}   # lets you run it on demand from the Actions tab
 
 # Needed so the job can commit the updated state file back to the repo.
