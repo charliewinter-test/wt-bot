@@ -8,7 +8,7 @@ packaging, patching, and vulnerability remediation can start the same day.
 No third-party dependencies: every checker is a single Python script using the
 standard library only.
 
-## What it watches
+## What it watches 
 
 | Software | Source | Notifies |
 | --- | --- | --- |
