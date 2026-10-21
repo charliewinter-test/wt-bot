@@ -38,3 +38,14 @@ jobs:
           else
             echo "No state change to commit."
           fi
+
+      # Runs only if an earlier step failed. Posts to the same Slack channel.
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -sS -f -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\": \":x: *.NET release check failed* - <${RUN_URL}|View the run>\"}" \
+            "$SLACK_WEBHOOK_URL"

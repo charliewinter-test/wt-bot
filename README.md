@@ -37,7 +37,7 @@ rather than swallowing it.
 
 ```text
 .github/workflows/
-  dotnet-release-check.yml            # .NET — daily 08:00 UTC + Tue 18:30 UTC
+  dotnet-release-check.yml            # .NET — daily 08:00 UTC + 20:00 UTC
   copilot-release-check.yml           # Copilot — daily 08:05 UTC
   storage-explorer-release-check.yml  # Storage Explorer — daily 08:10 UTC
   README.md                           # .NET-specific setup notes
@@ -102,6 +102,38 @@ gh workflow run copilot-release-check.yml
 gh workflow run storage-explorer-release-check.yml
 ```
 
+## Failure alerts
+
+Every workflow ends with a "Notify Slack on failure" step that runs only if an
+earlier step failed. It posts a short message with a link to the failed run, using
+the same webhook secret as that tool's release alerts, so it lands in the same
+channel.
+
+It covers a failed release check and a failed state commit or push. It sends nothing
+on success.
+
+Limits:
+
+- If the webhook itself is the problem (missing secret, revoked URL), the failure
+  alert can't be delivered either. Check the run history in GitHub.
+- GitHub can disable scheduled workflows after 60 days of repo inactivity. A disabled
+  workflow doesn't run, so it sends no alert.
+
+## Re-testing an alert
+
+Alerts are driven by the state file, not by run logs, so there is nothing to clear.
+To see an alert again:
+
+1. Edit the tool's state file (for example `dotnet-release-state.json`) to hold an
+   older version than the current release, then commit and push to `main`.
+2. Run the workflow manually (see above).
+
+Don't delete the file or empty it. A missing or empty state file counts as a first
+run, which seeds the current versions silently and sends nothing.
+
+If a run fails at the Slack step, state is not saved, so the next run retries the
+same alert. No reset is needed.
+
 ## Tuning
 
 Edit the `env:` block of the relevant workflow.
@@ -132,9 +164,13 @@ default state file path.
 
 ## Notes
 
-- Scheduled runs can lag a few minutes under GitHub load. The .NET checker has a
-  second Tuesday-evening pass to catch Patch Tuesday security drops promptly; the
-  daily run remains the safety net.
+- Scheduled runs can lag a few minutes under GitHub load. The .NET checker runs twice
+  a day (08:00 and 20:00 UTC) so security drops are caught promptly.
+- Slack limits a text block to 3000 characters and rejects longer messages with an
+  HTTP 400. Keep alert text short and link out for detail. This is why the .NET alert
+  doesn't list CVEs.
+- When several .NET channels update at once, the alert lists security releases first,
+  then channels in numeric order (8.0, 9.0, 10.0).
 - Secrets are never printed to logs — webhook URLs are referenced only via
   `${{ secrets.* }}`.
 - If a watcher goes quiet, check the workflow run history first: a failed fetch
