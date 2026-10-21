@@ -16,8 +16,9 @@ standard library only.
 | GitHub Copilot (desktop app) | GitHub Releases of `github/app` | Slack |
 | Azure Storage Explorer | GitHub Releases of `microsoft/AzureStorageExplorer` | Slack |
 
-The .NET checker additionally flags security releases and enriches the alert with
-the CVE list for that release.
+The .NET checker additionally flags security releases. It does not list CVEs in the
+alert (a release can have 40+, which exceeds Slack's block size limit); the alert
+links to the release notes instead.
 
 ## How it works
 

@@ -72,25 +72,6 @@ def post_slack(blocks, fallback_text):
         return resp.status
 
 
-def get_cves(channel_meta_url, release_version):
-    """Pull the CVE list for a specific release from the per-channel releases.json.
-
-    Returns a list of {"id": ..., "url": ...} dicts, or [] if unavailable.
-    """
-    try:
-        data = fetch_json(channel_meta_url)
-    except (urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
-        print(f"  Could not fetch CVE detail from {channel_meta_url}: {exc}", file=sys.stderr)
-        return []
-    for rel in data.get("releases", []):
-        if rel.get("release-version") == release_version:
-            out = []
-            for cve in rel.get("cve-list", []) or []:
-                out.append({"id": cve.get("cve-id", "?"), "url": cve.get("cve-url", "")})
-            return out
-    return []
-
-
 def build_blocks(updates):
     """Build Slack Block Kit blocks for one or more release updates."""
     n = len(updates)
@@ -115,16 +96,10 @@ def build_blocks(updates):
             f"  ·  <https://dotnet.microsoft.com/download/dotnet/{u['channel']}|Downloads>"
         )
 
-        text = f"{title}\n{details}"
-        if u["security"]:
-            if u["cves"]:
-                cve_lines = ", ".join(
-                    f"<{c['url']}|{c['id']}>" if c["url"] else c["id"] for c in u["cves"]
-                )
-                text += f"\n:lock: CVEs: {cve_lines}"
-            else:
-                text += "\n:lock: Security release (CVE details unavailable)"
-        text += f"\n{links}"
+        # CVE lists are deliberately omitted: a release can carry 40+ CVEs, which
+        # pushes the block past Slack's 3000-char limit and the webhook returns 400.
+        # The release notes link has the full detail.
+        text = f"{title}\n{details}\n{links}"
 
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
 
@@ -173,10 +148,6 @@ def main():
             # Still record the new version so we don't re-flag it later.
             continue
 
-        cves = []
-        if is_security and ch.get("releases.json"):
-            cves = get_cves(ch["releases.json"], latest)
-
         updates.append({
             "channel": cv,
             "release": latest,
@@ -186,7 +157,6 @@ def main():
             "phase": phase,
             "type": ch.get("release-type", "?").upper(),
             "security": is_security,
-            "cves": cves,
         })
 
     # Preserve any previously-tracked channels that dropped out of our watch set
