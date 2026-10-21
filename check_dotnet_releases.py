@@ -72,6 +72,14 @@ def post_slack(blocks, fallback_text):
         return resp.status
 
 
+def channel_sort_key(channel):
+    """Turn a channel like "10.0" into (10, 0) so it sorts numerically."""
+    try:
+        return tuple(int(part) for part in str(channel).split("."))
+    except ValueError:
+        return (float("inf"),)  # unparseable channels go last
+
+
 def build_blocks(updates):
     """Build Slack Block Kit blocks for one or more release updates."""
     n = len(updates)
@@ -174,7 +182,9 @@ def main():
         print("No new .NET releases.")
         return 0
 
-    updates.sort(key=lambda u: (not u["security"], u["channel"]))  # security first
+    # Security first, then numeric channel order (8.0, 9.0, 10.0). Sorting the
+    # channel as a string would put "10.0" before "8.0".
+    updates.sort(key=lambda u: (not u["security"], channel_sort_key(u["channel"])))
     blocks = build_blocks(updates)
     fallback = f"{len(updates)} new .NET release(s)"
     try:
